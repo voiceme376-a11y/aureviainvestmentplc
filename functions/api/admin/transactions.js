@@ -1,0 +1,2 @@
+import {json,requireAdmin} from '../../_lib/auth.js';
+export async function onRequestGet({request,env}){try{await requireAdmin(request,env);const r=await env.DB.prepare("SELECT p.id,p.user_id,u.name,u.email,p.type,p.provider_reference,p.amount_kobo,p.currency,p.status,p.description,p.created_at FROM payment_transactions p JOIN users u ON u.id=p.user_id ORDER BY p.created_at DESC LIMIT 500").all();return json({transactions:r.results||[]})}catch(e){return e instanceof Response?e:json({error:'Unable to load transactions.'},500)}}

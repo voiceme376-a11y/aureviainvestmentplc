@@ -1,0 +1,9 @@
+import {json} from '../../_lib/auth.js';
+import {paystackSignatureValid} from '../../_lib/paystack.js';
+export async function onRequestPost({request,env}){
+ const raw=await request.text();if(!(await paystackSignatureValid(request,env,raw)))return json({error:'Invalid signature.'},401);
+ try{const event=JSON.parse(raw);if(event.event==='charge.success'){const d=event.data||{},ref=d.reference;const tx=await env.DB.prepare("SELECT * FROM payment_transactions WHERE provider_reference=? AND type='deposit'").bind(ref).first();if(tx&&tx.status!=='success'){
+   let wallet=await env.DB.prepare("SELECT * FROM wallets WHERE user_id=? AND currency='NGN'").bind(tx.user_id).first();if(!wallet){await env.DB.prepare("INSERT INTO wallets(id,user_id,currency,balance_kobo,locked_kobo) VALUES(?,?,?,?,0)").bind(crypto.randomUUID(),tx.user_id,'NGN',0).run();wallet=await env.DB.prepare("SELECT * FROM wallets WHERE user_id=? AND currency='NGN'").bind(tx.user_id).first()}
+   const lr=await env.DB.prepare('INSERT OR IGNORE INTO ledger_entries(id,user_id,wallet_id,transaction_id,direction,amount_kobo,currency,balance_after_kobo,external_reference,description) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(crypto.randomUUID(),tx.user_id,wallet.id,tx.id,'credit',tx.amount_kobo,'NGN',Number(wallet.balance_kobo)+Number(tx.amount_kobo),`paystack:${ref}`,'Deposit').run();if(lr.meta?.changes===1)await env.DB.prepare("UPDATE wallets SET balance_kobo=balance_kobo+?,updated_at=datetime('now') WHERE id=?").bind(tx.amount_kobo,wallet.id).run();await env.DB.prepare("UPDATE payment_transactions SET status='success',updated_at=datetime('now') WHERE id=?").bind(tx.id).run();await env.DB.prepare("INSERT INTO notifications(id,user_id,title,body,kind) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),tx.user_id,'Deposit confirmed',`Deposit ${ref} has been credited to your wallet.`,'payment').run();
+ }}return json({received:true});}catch(e){return json({error:'Webhook processing failed.'},500)}
+}

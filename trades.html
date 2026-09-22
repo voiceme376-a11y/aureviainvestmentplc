@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Aurevia — secure digital account platform">
+<title>Aurevia — Trade History</title>
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/dashboard.css">
+<link rel="manifest" href="manifest.webmanifest">
+</head>
+<body class="four-d" data-page="trades">
+<div id="bootLoader" class="boot-loader"><div class="boot-scene"><div class="boot-orbit orbit-one"></div><div class="boot-orbit orbit-two"></div><div class="boot-orbit orbit-three"></div><div class="boot-logo"><img src="assets/images/aurevia-logo-3d.png" alt="Aurevia Investment PLC"></div><div class="boot-ring"></div></div><div class="boot-brand">AUREVIA<small>4D DIGITAL PLATFORM</small></div><div class="boot-status" id="bootStatus">Initializing 4D interface</div><div class="boot-progress"><i id="bootProgress"></i></div><div class="boot-meta"><span>SECURE WORKSPACE</span><b id="bootPercent">0%</b></div></div>
+
+<div class="ambient"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="orb orb-c"></div><div class="grid-floor"></div></div>
+<div class="live-hero-image" aria-hidden="true"></div>
+<div id="app">
+
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="index.html" aria-label="Aurevia home"><img class="brand-logo-img" src="assets/images/aurevia-logo-3d.png" alt="Aurevia Investment PLC"><span>AUREVIA <small>4D PLATFORM</small></span></a>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot">Secure platform<br><span>Server-connected account controls</span></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn mobile-only" id="menuBtn" aria-label="Open menu">☰</button>
+      <div class="crumb"><strong id="pageTitle">Dashboard</strong><span id="clock"></span></div>
+      <div class="top-actions">
+        <button class="ghost-btn" id="themeBtn">◐</button>
+        <button class="profile" id="profileBtn"><span class="avatar">A</span><span class="profile-copy"><b>Account</b><small>Signed in</small></span></button>
+      </div>
+    </header>
+    
+<div class="ticker"><div class="ticker-label">MARKET DATA</div><div id="tickerTrack"></div></div>
+<section class="content"></section>
+    
+<footer class="footer">
+Aurevia Platform · Cloudflare-connected account workspace</footer>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<div class="command-overlay" id="commandOverlay"><div class="command-box"><input id="commandInput" placeholder="Search actions, pages, settings…"><div id="commandResults"></div><small>Press Esc to close</small></div></div>
+<aside class="settings-drawer" id="settingsDrawer"><div class="drawer-head"><h2>Appearance</h2><button id="closeSettings">×</button></div><label>Interface mode<select id="modeSelect"><option value="midnight">Midnight 4D</option><option value="light">Light glass</option></select></label><label>Motion<select id="motionSelect"><option value="full">Full motion</option><option value="reduced">Reduced</option></select></label><label>Glow<select id="glowSelect"><option value="on">Neon glow</option><option value="off">Minimal glow</option></select></label><button class="btn primary full" id="saveAppearance">Apply appearance</button></aside>
+<script type="module" src="assets/js/app.js"></script>
+<script>
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+</script>
+
+</body>
+</html>

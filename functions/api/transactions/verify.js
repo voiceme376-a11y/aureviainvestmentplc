@@ -1,0 +1,16 @@
+import {json,requireUser,audit} from '../../_lib/auth.js';
+import {paystack} from '../../_lib/paystack.js';
+export async function onRequestGet({request,env}){
+ try{const u=await requireUser(request,env);const ref=new URL(request.url).searchParams.get('reference');if(!ref)return json({error:'Reference required.'},400);const tx=await env.DB.prepare('SELECT * FROM payment_transactions WHERE provider_reference=? AND user_id=?').bind(ref,u.id).first();if(!tx)return json({error:'Transaction not found.'},404);
+ const verified=await paystack(env,`/transaction/verify/${encodeURIComponent(ref)}`);const status=verified.data?.status||'pending';
+ if(status==='success'&&tx.status!=='success'&&tx.type==='deposit'){
+   let wallet=await env.DB.prepare("SELECT * FROM wallets WHERE user_id=? AND currency='NGN'").bind(u.id).first();if(!wallet){await env.DB.prepare("INSERT INTO wallets(id,user_id,currency,balance_kobo,locked_kobo) VALUES(?,?,?,?,0)").bind(crypto.randomUUID(),u.id,'NGN',0).run();wallet=await env.DB.prepare("SELECT * FROM wallets WHERE user_id=? AND currency='NGN'").bind(u.id).first()}
+   const ledgerId=crypto.randomUUID();const lr=await env.DB.prepare('INSERT OR IGNORE INTO ledger_entries(id,user_id,wallet_id,transaction_id,direction,amount_kobo,currency,balance_after_kobo,external_reference,description) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(ledgerId,u.id,wallet.id,tx.id,'credit',tx.amount_kobo,'NGN',Number(wallet.balance_kobo||0)+Number(tx.amount_kobo),`paystack:${ref}`,'Deposit').run();
+   if(lr.meta?.changes===1)await env.DB.prepare("UPDATE wallets SET balance_kobo=balance_kobo+?,updated_at=datetime('now') WHERE id=?").bind(tx.amount_kobo,wallet.id).run();
+   await env.DB.prepare("UPDATE payment_transactions SET status='success',updated_at=datetime('now') WHERE id=?").bind(tx.id).run();await env.DB.prepare("INSERT INTO notifications(id,user_id,title,body,kind) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),u.id,'Deposit confirmed',`Your deposit of ₦${(tx.amount_kobo/100).toLocaleString()} has been credited.`,'payment').run();await audit(env,u.id,'payment.deposit.completed',{transaction:tx.id,reference:ref});
+ } else if(status==='success'&&tx.status!=='success'&&tx.type==='upgrade'){
+   let meta={};try{meta=JSON.parse(tx.metadata||'{}')}catch{};const plan=String(meta.plan||'');if(['Premium','VIP'].includes(plan)){await env.DB.prepare('UPDATE users SET plan=? WHERE id=?').bind(plan,u.id).run();await env.DB.prepare("UPDATE payment_transactions SET status='success',updated_at=datetime('now') WHERE id=?").bind(tx.id).run();await env.DB.prepare("INSERT INTO notifications(id,user_id,title,body,kind) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),u.id,'Plan upgraded',`Your account is now on the ${plan} plan.`,'account').run();await audit(env,u.id,'account.upgrade.completed',{transaction:tx.id,plan});}
+ }
+ const current=await env.DB.prepare('SELECT status FROM payment_transactions WHERE id=?').bind(tx.id).first();return json({reference:ref,status:current?.status||status});
+ }catch(e){return e instanceof Response?e:json({error:e.message==='PAYSTACK_NOT_CONFIGURED'?'Payments are not configured yet.':(e.provider?.message||'Unable to verify transaction.')},502)}
+}

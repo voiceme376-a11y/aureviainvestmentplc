@@ -1,0 +1,2 @@
+import {json,requireUser} from '../_lib/auth.js';
+export async function onRequestGet({request,env}){try{const u=await requireUser(request,env);const r=await env.DB.prepare('SELECT id,title,body,kind,read_at,created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100').bind(u.id).all();return json({notifications:r.results||[]})}catch(e){return e instanceof Response?e:json({error:'Unable to load notifications.'},500)}}

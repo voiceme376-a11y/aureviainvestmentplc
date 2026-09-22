@@ -1,0 +1,5 @@
+import {json,cookie,randomToken,hashPassword,audit} from "../../_lib/auth.js";
+export async function onRequestPost({request,env}){
+ try{const b=await request.json();const email=String(b.email||"").trim().toLowerCase(),password=String(b.password||"");const u=await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(email).first();if(!u)return json({error:"Email or password is incorrect."},401);const check=await hashPassword(password,u.password_salt);if(check.hash!==u.password_hash)return json({error:"Email or password is incorrect."},401);if(u.status!=="active")return json({error:"This account is not active."},403);const token=randomToken();await env.DB.prepare("INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,datetime('now','+7 days'))").bind(token,u.id).run();await audit(env,u.id,"auth.login");return json({user:{id:u.id,name:u.name,email:u.email,role:u.role,plan:u.plan,status:u.status}},200,{"Set-Cookie":cookie("aurevia_session",token,604800)});
+ }catch(e){return json({error:"Login failed."},500)}
+}

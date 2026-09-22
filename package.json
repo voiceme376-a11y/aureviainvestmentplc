@@ -1,0 +1,14 @@
+{
+  "name": "aurevia-platform",
+  "private": true,
+  "version": "15.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev .",
+    "deploy": "wrangler pages deploy .",
+    "db:migrate": "wrangler d1 migrations apply aurevia-db --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

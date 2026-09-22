@@ -1,0 +1,10 @@
+name = "aurevia-platform"
+compatibility_date = "2026-09-22"
+pages_build_output_dir = "."
+
+# Replace the placeholder database_id after creating your Cloudflare D1 database.
+[[d1_databases]]
+binding = "DB"
+database_name = "aurevia-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"

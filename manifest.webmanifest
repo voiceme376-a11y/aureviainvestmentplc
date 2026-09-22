@@ -1,0 +1,9 @@
+{
+  "name": "Aurevia Investment PLC",
+  "short_name": "Aurevia",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050b16",
+  "theme_color": "#07101f",
+  "description": "Advanced 4D glass dashboard prototype."
+}
