@@ -1,8 +1,14 @@
 import {markets} from './data.js';
 import {loadLiveTrades} from './live-trades.js';
 
-const $=s=>document.querySelector(s),
-esc=v=>String(v??'').replace(/[&<>"']/g,m=>({
+
+/* =========================================================
+   CORE
+   ========================================================= */
+
+const $=s=>document.querySelector(s);
+
+const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({
   '&':'&amp;',
   '<':'&lt;',
   '>':'&gt;',
@@ -10,111 +16,213 @@ esc=v=>String(v??'').replace(/[&<>"']/g,m=>({
   "'":'&#39;'
 }[m]));
 
-const API_BASE='https://aurevia-api.isaac-rodriuez3035.workers.dev';
 
-const AUTH_KEY='aurevia_session_v4',
-BOOT_KEY='aurevia_boot_seen_v4',
-LOCAL_USERS_KEY='aurevia_local_accounts_v1',
-LOCAL_DATA_KEY='aurevia_local_data_v1',
-SECTION_READY_KEY='aurevia_section_transition_ready_v1',
-SECTION_BUSY_KEY='aurevia_section_transition_busy_v1';
+/*
+ * IMPORTANT
+ *
+ * Your website is hosted on Pages while the API is
+ * hosted on a Cloudflare Worker.
+ *
+ * Therefore API requests MUST use the Worker URL.
+ */
+const API_BASE=
+  'https://aurevia-api.isaac-rodriuez3035.workers.dev';
+
+
+const AUTH_KEY='aurevia_session_v4';
+const BOOT_KEY='aurevia_boot_seen_v4';
+const LOCAL_USERS_KEY='aurevia_local_accounts_v1';
+const LOCAL_DATA_KEY='aurevia_local_data_v1';
+const SECTION_READY_KEY='aurevia_section_transition_ready_v1';
+const SECTION_BUSY_KEY='aurevia_section_transition_busy_v1';
+
+
+/* =========================================================
+   AUTH STORAGE
+   ========================================================= */
 
 const authSession=()=>{
   try{
-    return JSON.parse(localStorage.getItem(AUTH_KEY)||'null');
+    return JSON.parse(
+      localStorage.getItem(AUTH_KEY)||'null'
+    );
   }catch{
     return null;
   }
 };
 
-const saveSession=s=>localStorage.setItem(AUTH_KEY,JSON.stringify(s));
 
-const clearSession=()=>localStorage.removeItem(AUTH_KEY);
+const saveSession=s=>
+  localStorage.setItem(
+    AUTH_KEY,
+    JSON.stringify(s)
+  );
+
+
+const clearSession=()=>
+  localStorage.removeItem(AUTH_KEY);
+
+
+/* =========================================================
+   LOCAL DATA HELPERS
+   ========================================================= */
 
 const readJSON=(k,d)=>{
   try{
-    return JSON.parse(localStorage.getItem(k)||JSON.stringify(d));
+    return JSON.parse(
+      localStorage.getItem(k)||
+      JSON.stringify(d)
+    );
   }catch{
     return d;
   }
 };
 
-const writeJSON=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 
-async function localHash(password,salt){
-  const enc=new TextEncoder();
-  const data=enc.encode(
-    String(salt||'')+'::'+String(password||'')
+const writeJSON=(k,v)=>
+  localStorage.setItem(
+    k,
+    JSON.stringify(v)
   );
 
-  if(crypto?.subtle?.digest){
-    const bits=await crypto.subtle.digest('SHA-256',data);
-    return [...new Uint8Array(bits)]
-      .map(x=>x.toString(16).padStart(2,'0'))
+
+async function localHash(password,salt){
+
+  const enc=new TextEncoder();
+
+  const data=enc.encode(
+    String(salt||'')+
+    '::'+
+    String(password||'')
+  );
+
+  if(
+    crypto?.subtle?.digest
+  ){
+
+    const bits=
+      await crypto.subtle.digest(
+        'SHA-256',
+        data
+      );
+
+    return [
+      ...new Uint8Array(bits)
+    ]
+      .map(
+        x=>x.toString(16).padStart(2,'0')
+      )
       .join('');
   }
 
   let h=0;
-  for(const b of data)h=((h<<5)-h+b)|0;
+
+  for(const b of data){
+    h=((h<<5)-h+b)|0;
+  }
+
   return String(h>>>0);
 }
 
-async function localLegacyHash(password,salt){
+
+async function localLegacyHash(
+  password,
+  salt
+){
+
   const enc=new TextEncoder();
 
-  const raw=await crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
+  const raw=
+    await crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
 
-  const bits=await crypto.subtle.deriveBits(
-    {
-      name:'PBKDF2',
-      salt:hexToBytes(salt),
-      iterations:100000,
-      hash:'SHA-256'
-    },
-    raw,
-    256
-  );
+  const bits=
+    await crypto.subtle.deriveBits(
+      {
+        name:'PBKDF2',
+        salt:hexToBytes(salt),
+        iterations:100000,
+        hash:'SHA-256'
+      },
+      raw,
+      256
+    );
 
-  return [...new Uint8Array(bits)]
-    .map(x=>x.toString(16).padStart(2,'0'))
+  return [
+    ...new Uint8Array(bits)
+  ]
+    .map(
+      x=>x.toString(16).padStart(2,'0')
+    )
     .join('');
 }
 
-const hexToBytes=h=>{
-  const a=new Uint8Array(h.length/2);
 
-  for(let i=0;i<a.length;i++){
-    a[i]=parseInt(h.slice(i*2,i*2+2),16);
+const hexToBytes=h=>{
+
+  const a=
+    new Uint8Array(
+      h.length/2
+    );
+
+  for(
+    let i=0;
+    i<a.length;
+    i++
+  ){
+
+    a[i]=parseInt(
+      h.slice(i*2,i*2+2),
+      16
+    );
   }
 
   return a;
 };
 
+
 const localToken=()=>{
-  const a=new Uint8Array(16);
+
+  const a=
+    new Uint8Array(16);
+
   crypto.getRandomValues(a);
 
-  return [...a]
-    .map(x=>x.toString(16).padStart(2,'0'))
+  return [
+    ...a
+  ]
+    .map(
+      x=>x.toString(16).padStart(2,'0')
+    )
     .join('');
 };
 
+
 function localUsers(){
-  return readJSON(LOCAL_USERS_KEY,[]);
+  return readJSON(
+    LOCAL_USERS_KEY,
+    []
+  );
 }
+
 
 function localData(){
-  return readJSON(LOCAL_DATA_KEY,{});
+  return readJSON(
+    LOCAL_DATA_KEY,
+    {}
+  );
 }
 
+
 function localCurrent(){
-  const s=authSession();
+
+  const s=
+    authSession();
 
   if(!s?.id){
     return null;
@@ -128,27 +236,54 @@ function localCurrent(){
    LOCAL FALLBACK
    ========================================================= */
 
-async function localRequest(path,options={}){
-  const method=(options.method||'GET').toUpperCase();
+async function localRequest(
+  path,
+  options={}
+){
+
+  const method=
+    (options.method||'GET')
+      .toUpperCase();
 
   let body={};
 
   try{
-    body=options.body?JSON.parse(options.body):{};
+
+    body=
+      options.body
+        ?JSON.parse(options.body)
+        :{};
+
   }catch{
+
     body={};
   }
 
 
   /* REGISTER */
 
-  if(path==='/api/auth/register'&&method==='POST'){
+  if(
+    path==='/api/auth/register'&&
+    method==='POST'
+  ){
 
-    const name=String(body.name||'').trim();
-    const email=String(body.email||'').trim().toLowerCase();
-    const password=String(body.password||'');
-    const phone=String(body.phone||'').trim();
-    const country=String(body.country||'').trim();
+    const name=
+      String(body.name||'').trim();
+
+    const email=
+      String(body.email||'')
+        .trim()
+        .toLowerCase();
+
+    const password=
+      String(body.password||'');
+
+    const phone=
+      String(body.phone||'').trim();
+
+    const country=
+      String(body.country||'').trim();
+
 
     if(
       name.length<2||
@@ -157,6 +292,7 @@ async function localRequest(path,options={}){
       phone.length<7||
       country.length<2
     ){
+
       throw Object.assign(
         Error(
           'Enter your full name, valid email, phone, country and a password of at least 8 characters.'
@@ -165,18 +301,38 @@ async function localRequest(path,options={}){
       );
     }
 
-    const users=localUsers();
 
-    if(users.some(u=>u.email===email)){
+    const users=
+      localUsers();
+
+
+    if(
+      users.some(
+        u=>u.email===email
+      )
+    ){
+
       throw Object.assign(
-        Error('An account with that email already exists on this device.'),
+        Error(
+          'An account with that email already exists on this device.'
+        ),
         {status:409}
       );
     }
 
-    const salt=localToken();
-    const hash=await localHash(password,salt);
-    const id='local_'+localToken();
+
+    const salt=
+      localToken();
+
+    const hash=
+      await localHash(
+        password,
+        salt
+      );
+
+    const id=
+      'local_'+localToken();
+
 
     const user={
       id,
@@ -189,6 +345,7 @@ async function localRequest(path,options={}){
       status:'active',
       local:true
     };
+
 
     users.push({
       id,
@@ -203,12 +360,25 @@ async function localRequest(path,options={}){
       hash
     });
 
-    writeJSON(LOCAL_USERS_KEY,users);
+
+    writeJSON(
+      LOCAL_USERS_KEY,
+      users
+    );
+
 
     const profile={
-      first_name:name.split(' ')[0]||name,
+      first_name:
+        name.split(' ')[0]||name,
+
       middle_name:'',
-      last_name:name.split(' ').slice(1).join(''),
+
+      last_name:
+        name
+          .split(' ')
+          .slice(1)
+          .join(''),
+
       phone,
       country,
       date_of_birth:'',
@@ -229,33 +399,47 @@ async function localRequest(path,options={}){
       two_factor_enabled:false
     };
 
-    const data=localData();
+
+    const data=
+      localData();
+
 
     data[id]={
       user,
       profile,
+
       wallet:{
         balance_kobo:0,
         locked_kobo:0,
         currency:'NGN'
       },
+
       transactions:[],
       beneficiaries:[],
       withdrawals:[],
+
       notifications:[
         {
           id:localToken(),
           title:'Welcome to Aurevia',
-          body:'Your account has been created. Complete your personal profile before using account operations.',
+          body:
+            'Your account has been created. Complete your personal profile before using account operations.',
           kind:'system',
-          created_at:new Date().toISOString()
+          created_at:
+            new Date().toISOString()
         }
       ]
     };
 
-    writeJSON(LOCAL_DATA_KEY,data);
+
+    writeJSON(
+      LOCAL_DATA_KEY,
+      data
+    );
+
 
     saveSession(user);
+
 
     return {
       user,
@@ -266,19 +450,28 @@ async function localRequest(path,options={}){
 
   /* LOGIN */
 
-  if(path==='/api/auth/login'&&method==='POST'){
+  if(
+    path==='/api/auth/login'&&
+    method==='POST'
+  ){
 
-    const email=String(body.email||'')
-      .trim()
-      .toLowerCase();
+    const email=
+      String(body.email||'')
+        .trim()
+        .toLowerCase();
 
-    const password=String(body.password||'');
+    const password=
+      String(body.password||'');
 
-    const u=localUsers().find(
-      x=>x.email===email
-    );
+
+    const u=
+      localUsers().find(
+        x=>x.email===email
+      );
+
 
     if(!u){
+
       throw Object.assign(
         Error(
           'Account not found. If the server is not connected, create the account on this device first.'
@@ -287,26 +480,38 @@ async function localRequest(path,options={}){
       );
     }
 
-    let hash=await localHash(
-      password,
-      u.salt
-    );
+
+    let hash=
+      await localHash(
+        password,
+        u.salt
+      );
+
 
     if(hash!==u.hash){
+
       try{
-        hash=await localLegacyHash(
-          password,
-          u.salt
-        );
+
+        hash=
+          await localLegacyHash(
+            password,
+            u.salt
+          );
+
       }catch{}
 
+
       if(hash!==u.hash){
+
         throw Object.assign(
-          Error('Incorrect email or password.'),
+          Error(
+            'Incorrect email or password.'
+          ),
           {status:401}
         );
       }
     }
+
 
     const user={
       id:u.id,
@@ -320,18 +525,24 @@ async function localRequest(path,options={}){
       local:true
     };
 
-    const d=localData();
+
+    const d=
+      localData();
+
 
     if(d[u.id]){
       d[u.id].user=user;
     }
+
 
     writeJSON(
       LOCAL_DATA_KEY,
       d
     );
 
+
     saveSession(user);
+
 
     return {
       user,
@@ -342,7 +553,11 @@ async function localRequest(path,options={}){
 
   /* LOCAL LOGOUT */
 
-  if(path==='/api/auth/logout'&&method==='POST'){
+  if(
+    path==='/api/auth/logout'&&
+    method==='POST'
+  ){
+
     return {
       ok:true,
       local:true
@@ -352,30 +567,42 @@ async function localRequest(path,options={}){
 
   /* PROTECTED LOCAL ACCOUNT */
 
-  const cur=localCurrent();
+  const cur=
+    localCurrent();
+
 
   if(!cur){
+
     throw Object.assign(
-      Error('Please log in to continue.'),
+      Error(
+        'Please log in to continue.'
+      ),
       {status:401}
     );
   }
 
-  const d=localData();
+
+  const d=
+    localData();
+
 
   const currentId=
     cur?.user?.id||
     cur?.id;
 
+
   const acct=
-    currentId?
-    d[currentId]||
-    null:
-    null;
+    currentId
+      ?d[currentId]||null
+      :null;
+
 
   if(!acct){
+
     throw Object.assign(
-      Error('Account data is unavailable.'),
+      Error(
+        'Account data is unavailable.'
+      ),
       {status:404}
     );
   }
@@ -383,14 +610,18 @@ async function localRequest(path,options={}){
 
   /* OVERVIEW */
 
-  if(path==='/api/account/overview'){
+  if(
+    path==='/api/account/overview'
+  ){
+
     return {
       user:acct.user,
       wallet:acct.wallet,
       profile:acct.profile,
-      transactions:acct.transactions
-        .slice(-8)
-        .reverse(),
+      transactions:
+        acct.transactions
+          .slice(-8)
+          .reverse(),
       local:true
     };
   }
@@ -402,9 +633,11 @@ async function localRequest(path,options={}){
     path==='/api/account/profile'&&
     method==='GET'
   ){
+
     return {
       profile:acct.profile,
-      beneficiaries:acct.beneficiaries,
+      beneficiaries:
+        acct.beneficiaries,
       local:true
     };
   }
@@ -422,27 +655,37 @@ async function localRequest(path,options={}){
       ...body
     };
 
+
     acct.user={
       ...acct.user,
+
       name:[
         acct.profile.first_name,
         acct.profile.middle_name,
         acct.profile.last_name
       ]
         .filter(Boolean)
-        .join(' ')||acct.user.name,
+        .join(' ')||
+        acct.user.name,
+
       phone:acct.profile.phone,
       country:acct.profile.country
     };
 
+
     d[currentId]=acct;
+
 
     writeJSON(
       LOCAL_DATA_KEY,
       d
     );
 
-    saveSession(acct.user);
+
+    saveSession(
+      acct.user
+    );
+
 
     return {
       profile:acct.profile,
@@ -458,8 +701,10 @@ async function localRequest(path,options={}){
     path==='/api/account/beneficiary'&&
     method==='GET'
   ){
+
     return {
-      beneficiaries:acct.beneficiaries,
+      beneficiaries:
+        acct.beneficiaries,
       local:true
     };
   }
@@ -472,33 +717,48 @@ async function localRequest(path,options={}){
     method==='POST'
   ){
 
-    const num=String(
-      body.accountNumber||''
-    ).replace(/\D/g,'');
+    const num=
+      String(
+        body.accountNumber||''
+      )
+        .replace(/\D/g,'');
+
 
     if(num.length<6){
+
       throw Error(
         'Enter a valid bank account number.'
       );
     }
 
+
     const b={
       id:'ben_'+localToken(),
-      bank_name:body.bankName||'Bank account',
+      bank_name:
+        body.bankName||
+        'Bank account',
+
       account_number_masked:
         '••••'+num.slice(-4),
-      account_name:acct.user.name,
+
+      account_name:
+        acct.user.name,
+
       verified:true
     };
 
+
     acct.beneficiaries.push(b);
 
+
     d[currentId]=acct;
+
 
     writeJSON(
       LOCAL_DATA_KEY,
       d
     );
+
 
     return {
       beneficiary:b,
@@ -509,9 +769,13 @@ async function localRequest(path,options={}){
 
   /* NOTIFICATIONS */
 
-  if(path==='/api/notifications'){
+  if(
+    path==='/api/notifications'
+  ){
+
     return {
-      notifications:acct.notifications,
+      notifications:
+        acct.notifications,
       local:true
     };
   }
@@ -519,12 +783,19 @@ async function localRequest(path,options={}){
 
   /* TRANSACTION HISTORY */
 
-  if(path==='/api/transactions/history'){
+  if(
+    path==='/api/transactions/history'
+  ){
+
     return {
-      deposits:acct.transactions.filter(
-        x=>x.type==='deposit'
-      ),
-      withdrawals:acct.withdrawals,
+      deposits:
+        acct.transactions.filter(
+          x=>x.type==='deposit'
+        ),
+
+      withdrawals:
+        acct.withdrawals,
+
       local:true
     };
   }
@@ -537,45 +808,58 @@ async function localRequest(path,options={}){
     method==='POST'
   ){
 
-    const amount=Math.round(
-      Number(body.amount)*100
-    );
+    const amount=
+      Math.round(
+        Number(body.amount)*100
+      );
+
 
     if(
       !Number.isFinite(amount)||
       amount<=0
     ){
+
       throw Error(
         'Enter a valid deposit amount.'
       );
     }
+
 
     const tx={
       id:'tx_'+localToken(),
       type:'deposit',
       amount_kobo:amount,
       status:'pending',
+
       provider_reference:
         'LOCAL-'+
         localToken()
           .slice(0,12)
           .toUpperCase(),
+
       description:'Deposit request',
-      created_at:new Date().toISOString()
+
+      created_at:
+        new Date().toISOString()
     };
+
 
     acct.transactions.push(tx);
 
+
     d[currentId]=acct;
+
 
     writeJSON(
       LOCAL_DATA_KEY,
       d
     );
 
+
     return {
       transaction:{
-        reference:tx.provider_reference
+        reference:
+          tx.provider_reference
       },
       status:'pending',
       local:true
@@ -590,68 +874,87 @@ async function localRequest(path,options={}){
     method==='POST'
   ){
 
-    const amount=Math.round(
-      Number(body.amount)*100
-    );
+    const amount=
+      Math.round(
+        Number(body.amount)*100
+      );
+
 
     if(
       !Number.isFinite(amount)||
       amount<=0
     ){
+
       throw Error(
         'Enter a valid withdrawal amount.'
       );
     }
+
 
     if(
       amount>
       Number(acct.wallet.balance_kobo)-
       Number(acct.wallet.locked_kobo)
     ){
+
       throw Error(
         'Insufficient available balance.'
       );
     }
 
+
     acct.wallet.locked_kobo=
       Number(acct.wallet.locked_kobo)+
       amount;
+
 
     const beneficiary=
       acct.beneficiaries.find(
         x=>x.id===body.beneficiaryId
       )||{};
 
+
     const w={
       id:'wd_'+localToken(),
+
       provider_reference:
         'LOCAL-WD-'+
         localToken()
           .slice(0,12)
           .toUpperCase(),
+
       amount_kobo:amount,
       status:'pending_review',
+
       bank_name:
         beneficiary.bank_name||
         'Bank account',
+
       account_number_masked:
         beneficiary.account_number_masked||
         'Not selected',
-      created_at:new Date().toISOString()
+
+      created_at:
+        new Date().toISOString()
     };
+
 
     acct.withdrawals.push(w);
 
+
     d[currentId]=acct;
+
 
     writeJSON(
       LOCAL_DATA_KEY,
       d
     );
 
+
     return {
       request:{
-        reference:w.provider_reference
+        reference:
+          w.provider_reference
       },
       local:true
     };
@@ -665,46 +968,65 @@ async function localRequest(path,options={}){
     method==='POST'
   ){
 
-    const u=localUsers().find(
-      x=>x.id===currentId
-    );
+    const u=
+      localUsers().find(
+        x=>x.id===currentId
+      );
+
 
     if(!u){
+
       throw Error(
         'Account not found.'
       );
     }
 
-    const old=await localHash(
-      String(body.currentPassword||''),
-      u.salt
-    );
+
+    const old=
+      await localHash(
+        String(
+          body.currentPassword||''
+        ),
+        u.salt
+      );
+
 
     if(old!==u.hash){
+
       throw Error(
         'Current password is incorrect.'
       );
     }
 
+
     if(
-      String(body.newPassword||'').length<8
+      String(
+        body.newPassword||''
+      ).length<8
     ){
+
       throw Error(
         'New password must contain at least 8 characters.'
       );
     }
 
-    u.salt=localToken();
 
-    u.hash=await localHash(
-      String(body.newPassword),
-      u.salt
-    );
+    u.salt=
+      localToken();
+
+
+    u.hash=
+      await localHash(
+        String(body.newPassword),
+        u.salt
+      );
+
 
     writeJSON(
       LOCAL_USERS_KEY,
       localUsers()
     );
+
 
     return {
       ok:true,
@@ -726,45 +1048,67 @@ async function localRequest(path,options={}){
    SERVER API
    ========================================================= */
 
-async function api(path,options={}){
+async function api(
+  path,
+  options={}
+){
 
   const target=
     /^https?:\/\//i.test(path)
       ?path
-      :API_BASE+path;
+      :`${API_BASE}${path}`;
+
 
   let res;
 
+
   try{
 
-    res=await fetch(
-      target,
-      {
-        ...options,
+    res=
+      await fetch(
+        target,
+        {
+          ...options,
 
-        headers:{
-          ...(options.body
-            ?{'Content-Type':'application/json'}
-            :{}),
-          ...(options.headers||{})
-        },
+          headers:{
+            'Accept':
+              'application/json',
 
-        /*
-         * REQUIRED:
-         * Allows the browser to send the
-         * HttpOnly aurevia_session cookie
-         * to the Cloudflare Worker.
-         */
-        credentials:'include'
-      }
-    );
+            ...(options.body
+              ?{
+                  'Content-Type':
+                    'application/json'
+                }
+              :{}),
+
+            ...(options.headers||{})
+          },
+
+          /*
+           * REQUIRED FOR THE WORKER SESSION COOKIE.
+           *
+           * The browser must be allowed to send
+           * aurevia_session to the Worker.
+           */
+          credentials:'include',
+
+          /*
+           * Explicit CORS request mode.
+           */
+          mode:'cors'
+        }
+      );
 
   }catch(e){
 
     /*
-     * If the Worker itself cannot be reached,
-     * preserve the existing local-device fallback.
+     * Only an actual network failure uses
+     * the local-device fallback.
+     *
+     * HTTP errors from the Worker are NOT
+     * silently converted into local mode.
      */
+
     return localRequest(
       path,
       options
@@ -773,93 +1117,147 @@ async function api(path,options={}){
 
 
   const type=
-    res.headers.get('content-type')||'';
+    res.headers.get(
+      'content-type'
+    )||'';
+
 
   const raw=
     await res.text();
 
+
   let data={};
 
+
   try{
-    data=raw?
-      JSON.parse(raw):
-      {};
+
+    data=
+      raw
+        ?JSON.parse(raw)
+        :{};
+
   }catch{}
 
 
-  /*
-   * IMPORTANT:
-   *
-   * Authentication failures must NOT silently
-   * switch to local mode.
-   *
-   * A 401 from the Worker means the Worker
-   * received the request but the server session
-   * was not authenticated.
-   */
+  /* =======================================================
+     SERVER AUTH FAILURE
+     ======================================================= */
 
-  if(!res.ok){
+  if(
+    res.status===401
+  ){
 
-    if(res.status===401){
-
-      const e=Error(
+    const e=
+      Error(
         data.error||
-        'Your server session is not authenticated. Please sign in again.'
+        'Your Aurevia server session is not authenticated. Please sign in again.'
       );
 
-      e.status=401;
 
-      throw e;
-    }
+    e.status=401;
 
-
-    /*
-     * Only use local fallback when the server
-     * endpoint itself is unavailable.
-     */
-
-    const unavailable=[
-      404,
-      500,
-      502,
-      503,
-      504
-    ].includes(res.status)||
-    !type.includes('application/json');
-
-    if(unavailable){
-
-      return localRequest(
-        path,
-        options
-      );
-    }
-
-    const e=Error(
-      data.error||
-      'The account service rejected this request.'
-    );
-
-    e.status=res.status;
 
     throw e;
   }
 
 
-  /*
-   * Non-JSON server response means the server
-   * route is unavailable/misconfigured.
-   */
+  /* =======================================================
+     OTHER SERVER ERRORS
+     ======================================================= */
 
-  if(!type.includes('application/json')){
+  if(!res.ok){
 
-    return localRequest(
-      path,
-      options
+    const e=
+      Error(
+        data.error||
+        `Aurevia server returned HTTP ${res.status}.`
+      );
+
+
+    e.status=
+      res.status;
+
+
+    throw e;
+  }
+
+
+  /* =======================================================
+     NON-JSON RESPONSE
+     ======================================================= */
+
+  if(
+    !type.includes(
+      'application/json'
+    )
+  ){
+
+    throw Object.assign(
+      Error(
+        'The Aurevia API returned an invalid response.'
+      ),
+      {status:502}
     );
   }
 
+
   return data;
+}
+
+
+/* =========================================================
+   SERVER SESSION VALIDATION
+   ========================================================= */
+
+async function validateServerSession(){
+
+  try{
+
+    const r=
+      await api(
+        '/api/auth/me'
+      );
+
+
+    if(
+      r?.success&&
+      r?.authenticated&&
+      r?.user
+    ){
+
+      /*
+       * Keep the UI copy of the user synchronized
+       * with the real server account.
+       */
+      saveSession(
+        r.user
+      );
+
+      return r.user;
+    }
+
+
+    return null;
+
+  }catch(e){
+
+    /*
+     * A 401 means the browser has no usable
+     * server session.
+     */
+    if(e.status===401){
+      return null;
+    }
+
+    /*
+     * If the API is temporarily unreachable,
+     * do not destroy the local UI state.
+     *
+     * Protected API calls will still expose
+     * the real server error.
+     */
+    return authSession()||null;
+  }
 }
 
 
@@ -883,7 +1281,10 @@ const money=k=>
    BOOT LOADER
    ========================================================= */
 
-function setBootProgress(n,label){
+function setBootProgress(
+  n,
+  label
+){
 
   $('#bootProgress')
     ?.style
@@ -892,12 +1293,16 @@ function setBootProgress(n,label){
       n+'%'
     );
 
+
   if($('#bootPercent')){
+
     $('#bootPercent').textContent=
       n+'%';
   }
 
+
   if($('#bootStatus')){
+
     $('#bootStatus').textContent=
       label;
   }
@@ -906,18 +1311,28 @@ function setBootProgress(n,label){
 
 async function bootLoader(){
 
-  const l=$('#bootLoader');
+  const l=
+    $('#bootLoader');
+
 
   if(!l)return;
 
+
   if(
-    sessionStorage.getItem(BOOT_KEY)
+    sessionStorage.getItem(
+      BOOT_KEY
+    )
   ){
+
     l.remove();
+
     return;
   }
 
-  const start=Date.now();
+
+  const start=
+    Date.now();
+
 
   for(
     const [n,t] of [
@@ -933,28 +1348,42 @@ async function bootLoader(){
   ){
 
     await new Promise(
-      r=>setTimeout(r,700)
+      r=>setTimeout(
+        r,
+        700
+      )
     );
 
-    setBootProgress(n,t);
+
+    setBootProgress(
+      n,
+      t
+    );
   }
+
 
   await new Promise(
     r=>setTimeout(
       r,
       Math.max(
         0,
-        7000-(Date.now()-start)
+        7000-
+        (Date.now()-start)
       )
     )
   );
+
 
   sessionStorage.setItem(
     BOOT_KEY,
     '1'
   );
 
-  l.classList.add('done');
+
+  l.classList.add(
+    'done'
+  );
+
 
   setTimeout(
     ()=>l.remove(),
@@ -965,7 +1394,10 @@ async function bootLoader(){
 
 const sleep=ms=>
   new Promise(
-    r=>setTimeout(r,ms)
+    r=>setTimeout(
+      r,
+      ms
+    )
   );
 
 
@@ -982,15 +1414,22 @@ function sectionTransition(
       'sectionLoader'
     );
 
+
   if(!overlay){
 
     overlay=
-      document.createElement('div');
+      document.createElement(
+        'div'
+      );
 
-    overlay.id='sectionLoader';
+
+    overlay.id=
+      'sectionLoader';
+
 
     overlay.className=
       'section-loader';
+
 
     overlay.innerHTML=`
       <div
@@ -1023,46 +1462,59 @@ function sectionTransition(
       </div>
     `;
 
+
     document.body.appendChild(
       overlay
     );
   }
 
+
   overlay.classList.remove(
     'done'
   );
+
 
   overlay.classList.add(
     'show'
   );
 
+
   document.body.classList.add(
     'section-loading'
   );
+
 
   const el=
     overlay.querySelector(
       '#sectionLoaderLabel'
     );
 
+
   if(el){
-    el.textContent=label;
+    el.textContent=
+      label;
   }
+
 
   const line=
     overlay.querySelector(
       '.section-loader-line i'
     );
 
+
   if(line){
 
-    line.style.animation='none';
+    line.style.animation=
+      'none';
+
 
     void line.offsetWidth;
+
 
     line.style.animation=
       'sectionLine 2s linear forwards';
   }
+
 
   return ()=>{
 
@@ -1070,9 +1522,11 @@ function sectionTransition(
       'done'
     );
 
+
     document.body.classList.remove(
       'section-loading'
     );
+
 
     setTimeout(
       ()=>overlay.remove(),
@@ -1092,6 +1546,7 @@ async function withSectionTransition(
       SECTION_READY_KEY
     )==='1';
 
+
   if(skip){
 
     sessionStorage.removeItem(
@@ -1099,29 +1554,45 @@ async function withSectionTransition(
     );
   }
 
+
   if(skip){
     return fn();
   }
 
+
   const hide=
-    sectionTransition(label);
+    sectionTransition(
+      label
+    );
+
 
   let result;
   let error;
 
+
   try{
-    result=await fn();
+
+    result=
+      await fn();
+
   }catch(e){
+
     error=e;
   }
 
-  await sleep(2000);
+
+  await sleep(
+    2000
+  );
+
 
   hide();
+
 
   if(error){
     throw error;
   }
+
 
   return result;
 }
@@ -1141,6 +1612,7 @@ function authInput(
   return `
     <label class="auth-label">
       ${label}
+
       <input
         name="${label}"
         type="${type}"
@@ -1158,8 +1630,23 @@ function authInput(
 
 function authScreen(){
 
+  /*
+   * Prevent duplicate auth screens.
+   */
+  document
+    .querySelectorAll(
+      '#authScreen'
+    )
+    .forEach(
+      x=>x.remove()
+    );
+
+
   const w=
-    document.createElement('div');
+    document.createElement(
+      'div'
+    );
+
 
   const initialTab=
     document.body.dataset.authTab===
@@ -1167,7 +1654,10 @@ function authScreen(){
       ?'register'
       :'login';
 
-  w.id='authScreen';
+
+  w.id=
+    'authScreen';
+
 
   w.innerHTML=`
 
@@ -1180,6 +1670,7 @@ function authScreen(){
     <div class="auth-shell">
 
       <div class="auth-brand">
+
         <img
           class="auth-logo-img"
           src="assets/images/aurevia-logo-3d.png"
@@ -1190,7 +1681,9 @@ function authScreen(){
           <b>AUREVIA</b>
           <small>INVESTMENT PLC</small>
         </div>
+
       </div>
+
 
       <div class="auth-copy">
 
@@ -1220,19 +1713,30 @@ function authScreen(){
 
       </div>
 
+
       <div class="auth-card">
 
         <div class="auth-tabs">
 
           <button
-            class="auth-tab ${initialTab==='login'?'active':''}"
+            type="button"
+            class="auth-tab ${
+              initialTab==='login'
+                ?'active'
+                :''
+            }"
             data-auth-tab="login"
           >
             Login
           </button>
 
           <button
-            class="auth-tab ${initialTab==='register'?'active':''}"
+            type="button"
+            class="auth-tab ${
+              initialTab==='register'
+                ?'active'
+                :''
+            }"
             data-auth-tab="register"
           >
             Create account
@@ -1240,9 +1744,14 @@ function authScreen(){
 
         </div>
 
+
         <form
           id="loginForm"
-          class="auth-form ${initialTab==='login'?'':'hidden'}"
+          class="auth-form ${
+            initialTab==='login'
+              ?''
+              :'hidden'
+          }"
         >
 
           ${authInput(
@@ -1258,6 +1767,7 @@ function authScreen(){
           )}
 
           <button
+            type="submit"
             class="btn primary full"
           >
             Sign in securely
@@ -1268,7 +1778,11 @@ function authScreen(){
 
         <form
           id="registerForm"
-          class="auth-form ${initialTab==='register'?'':'hidden'}"
+          class="auth-form ${
+            initialTab==='register'
+              ?''
+              :'hidden'
+          }"
         >
 
           ${authInput(
@@ -1307,6 +1821,7 @@ function authScreen(){
             'Repeat your password'
           )}
 
+
           <label class="auth-check">
 
             <input
@@ -1332,13 +1847,16 @@ function authScreen(){
 
           </label>
 
+
           <button
+            type="submit"
             class="btn primary full"
           >
             Create secure account
           </button>
 
         </form>
+
 
         <div
           id="authMessage"
@@ -1347,185 +1865,368 @@ function authScreen(){
 
       </div>
 
+
       <div class="auth-foot">
         Aurevia Investment PLC ·
-        Cloudflare Functions ·
+        Cloudflare Worker ·
         D1 account ledger
       </div>
 
     </div>
   `;
 
-  document.body.appendChild(w);
+
+  document.body.appendChild(
+    w
+  );
+
 
   const login=
-    w.querySelector('#loginForm');
+    w.querySelector(
+      '#loginForm'
+    );
+
 
   const reg=
-    w.querySelector('#registerForm');
+    w.querySelector(
+      '#registerForm'
+    );
+
 
   const msg=
-    w.querySelector('#authMessage');
+    w.querySelector(
+      '#authMessage'
+    );
 
+
+  /* AUTH TABS */
 
   w.querySelectorAll(
     '[data-auth-tab]'
-  ).forEach(b=>{
+  ).forEach(
+    b=>{
 
-    b.onclick=()=>{
+      b.onclick=()=>{
 
-      w.querySelectorAll(
-        '.auth-tab'
-      ).forEach(x=>
-        x.classList.remove(
+        w.querySelectorAll(
+          '.auth-tab'
+        ).forEach(
+          x=>
+            x.classList.remove(
+              'active'
+            )
+        );
+
+
+        b.classList.add(
           'active'
-        )
-      );
-
-      b.classList.add(
-        'active'
-      );
-
-      login.classList.toggle(
-        'hidden',
-        b.dataset.authTab!=='login'
-      );
-
-      reg.classList.toggle(
-        'hidden',
-        b.dataset.authTab!=='register'
-      );
-
-      msg.textContent='';
-
-      document.body.dataset.authTab=
-        b.dataset.authTab;
-    };
-  });
-
-
-  /* LOGIN */
-
-  login.onsubmit=async e=>{
-
-    e.preventDefault();
-
-    msg.textContent=
-      'Signing in securely…';
-
-    const f=
-      new FormData(login);
-
-    try{
-
-      const r=
-        await api(
-          '/api/auth/login',
-          {
-            method:'POST',
-            body:JSON.stringify({
-              email:f.get('Email'),
-              password:f.get('Password')
-            })
-          }
         );
 
-      if(!r?.user){
-        throw Error(
-          'Account service returned an invalid session.'
+
+        login.classList.toggle(
+          'hidden',
+          b.dataset.authTab!=='login'
         );
+
+
+        reg.classList.toggle(
+          'hidden',
+          b.dataset.authTab!=='register'
+        );
+
+
+        msg.textContent='';
+
+
+        document.body.dataset.authTab=
+          b.dataset.authTab;
+      };
+    }
+  );
+
+
+  /* =======================================================
+     LOGIN
+     ======================================================= */
+
+  login.onsubmit=
+    async e=>{
+
+      e.preventDefault();
+
+
+      const submit=
+        login.querySelector(
+          'button[type="submit"]'
+        );
+
+
+      if(submit){
+        submit.disabled=true;
       }
 
-      /*
-       * Save only UI/account information.
-       * The actual secure session remains in
-       * the HttpOnly Worker cookie.
-       */
-      saveSession(r.user);
-
-      location.replace(
-        new URLSearchParams(
-          location.search
-        ).get('next')==='admin'
-          ?'admin/index.html'
-          :'index.html'
-      );
-
-    }catch(e){
 
       msg.textContent=
-        e.message||
-        'Sign in could not be completed.';
-    }
-  };
+        'Signing in securely…';
 
 
-  /* REGISTER */
+      const f=
+        new FormData(login);
 
-  reg.onsubmit=async e=>{
 
-    e.preventDefault();
+      try{
 
-    msg.textContent=
-      'Creating your secure account…';
+        const r=
+          await api(
+            '/api/auth/login',
+            {
+              method:'POST',
 
-    const f=
-      new FormData(reg);
+              body:
+                JSON.stringify({
+                  email:
+                    f.get('Email'),
 
-    const password=
-      String(f.get('Password'));
+                  password:
+                    f.get('Password')
+                })
+            }
+          );
 
-    if(
-      password!==f.get(
-        'Confirm password'
-      )
-    ){
-      msg.textContent=
-        'Passwords do not match.';
-      return;
-    }
 
-    const payload={
-      name:f.get('Full name'),
-      email:f.get('Email'),
-      phone:f.get('Phone'),
-      country:f.get('Country'),
-      password
+        if(!r?.user){
+
+          throw Error(
+            'Account service returned an invalid session.'
+          );
+        }
+
+
+        /*
+         * The secure authentication token is NOT
+         * saved in localStorage.
+         *
+         * It remains in the HttpOnly cookie
+         * issued by the Worker.
+         */
+        saveSession(
+          r.user
+        );
+
+
+        msg.textContent=
+          'Login successful. Opening your account…';
+
+
+        const next=
+          new URLSearchParams(
+            location.search
+          ).get('next');
+
+
+        setTimeout(
+          ()=>{
+
+            location.replace(
+              next==='admin'
+                ?'admin/index.html'
+                :'index.html'
+            );
+
+          },
+          150
+        );
+
+
+      }catch(e){
+
+        msg.textContent=
+          e.message||
+          'Sign in could not be completed.';
+
+      }finally{
+
+        if(submit){
+          submit.disabled=false;
+        }
+      }
     };
 
-    try{
 
-      const r=
-        await api(
-          '/api/auth/register',
-          {
-            method:'POST',
-            body:JSON.stringify(payload)
-          }
+  /* =======================================================
+     REGISTER
+     ======================================================= */
+
+  reg.onsubmit=
+    async e=>{
+
+      e.preventDefault();
+
+
+      const submit=
+        reg.querySelector(
+          'button[type="submit"]'
         );
 
-      if(!r?.user){
-        throw Error(
-          'Account creation did not return an account.'
-        );
+
+      if(submit){
+        submit.disabled=true;
       }
 
-      saveSession(r.user);
 
       msg.textContent=
-        'Account created. Opening your dashboard…';
+        'Creating your secure account…';
 
-      location.replace(
-        'index.html'
-      );
 
-    }catch(e){
+      const f=
+        new FormData(reg);
 
-      msg.textContent=
-        e.message||
-        'Account creation could not be completed.';
-    }
-  };
+
+      const password=
+        String(
+          f.get('Password')||''
+        );
+
+
+      const confirm=
+        String(
+          f.get('Confirm password')||''
+        );
+
+
+      if(
+        password!==confirm
+      ){
+
+        msg.textContent=
+          'Passwords do not match.';
+
+        if(submit){
+          submit.disabled=false;
+        }
+
+        return;
+      }
+
+
+      const payload={
+        name:
+          f.get('Full name'),
+
+        email:
+          f.get('Email'),
+
+        phone:
+          f.get('Phone'),
+
+        country:
+          f.get('Country'),
+
+        password
+      };
+
+
+      try{
+
+        /*
+         * First create the account on D1.
+         */
+        const r=
+          await api(
+            '/api/auth/register',
+            {
+              method:'POST',
+
+              body:
+                JSON.stringify(
+                  payload
+                )
+            }
+          );
+
+
+        if(!r?.user){
+
+          throw Error(
+            'Account creation did not return an account.'
+          );
+        }
+
+
+        /*
+         * IMPORTANT:
+         *
+         * Registration may create the user but
+         * may not create a Worker session.
+         *
+         * Therefore immediately perform a real
+         * server login. This causes the Worker to
+         * issue aurevia_session.
+         */
+        msg.textContent=
+          'Account created. Establishing secure session…';
+
+
+        const loginResult=
+          await api(
+            '/api/auth/login',
+            {
+              method:'POST',
+
+              body:
+                JSON.stringify({
+                  email:
+                    payload.email,
+
+                  password:
+                    payload.password
+                })
+            }
+          );
+
+
+        if(
+          !loginResult?.user
+        ){
+
+          throw Error(
+            'Account was created, but the secure login session could not be established.'
+          );
+        }
+
+
+        saveSession(
+          loginResult.user
+        );
+
+
+        msg.textContent=
+          'Account created successfully. Opening your dashboard…';
+
+
+        setTimeout(
+          ()=>{
+            location.replace(
+              'index.html'
+            );
+          },
+          150
+        );
+
+
+      }catch(e){
+
+        msg.textContent=
+          e.message||
+          'Account creation could not be completed.';
+
+      }finally{
+
+        if(submit){
+          submit.disabled=false;
+        }
+      }
+    };
 }
 
 
@@ -1535,19 +2236,14 @@ function authScreen(){
 
 async function requireAuth(){
 
-  /*
-   * Refreshes intentionally do NOT call /api/auth/me.
-   *
-   * The local UI state keeps the user on the
-   * same page after refresh.
-   *
-   * Protected server operations still require
-   * the real Worker session cookie.
-   */
-
   const current=
     authSession();
 
+
+  /*
+   * No local UI session means immediately show
+   * the login screen.
+   */
   if(
     !current||
     !current.email
@@ -1561,6 +2257,34 @@ async function requireAuth(){
     return false;
   }
 
+
+  /*
+   * Validate the real Worker session.
+   *
+   * If the browser sends the HttpOnly cookie,
+   * /api/auth/me returns the authoritative
+   * account information.
+   */
+  const serverUser=
+    await validateServerSession();
+
+
+  if(!serverUser){
+
+    clearSession();
+
+
+    $('#app').style.display=
+      'none';
+
+
+    authScreen();
+
+
+    return false;
+  }
+
+
   $('#app').style.display=
     'block';
 
@@ -1570,10 +2294,12 @@ async function requireAuth(){
       '.profile-copy b'
     );
 
+
   const emailEl=
     document.querySelector(
       '.profile-copy small'
     );
+
 
   const avatar=
     document.querySelector(
@@ -1582,14 +2308,17 @@ async function requireAuth(){
 
 
   if(nameEl){
+
     nameEl.textContent=
-      current.name||
+      serverUser.name||
       'Account';
   }
 
+
   if(emailEl){
+
     emailEl.textContent=
-      current.email||
+      serverUser.email||
       'Secure account';
   }
 
@@ -1598,21 +2327,25 @@ async function requireAuth(){
 
     const initials=
       String(
-        current.name||
+        serverUser.name||
         'A'
       )
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0,2)
-      .map(x=>x[0])
-      .join('')
-      .toUpperCase();
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0,2)
+        .map(
+          x=>x[0]
+        )
+        .join('')
+        .toUpperCase();
+
 
     avatar.textContent=
       initials||
       'A';
   }
+
 
   return true;
 }
@@ -1639,35 +2372,92 @@ const navItems=[
   ['↪','Logout','logout']
 ];
 
+
 const pages={
-  dashboard:['Dashboard','OVERVIEW'],
-  deposit:['Make Deposit','FUNDING'],
-  history:['Deposit History','ACTIVITY'],
-  trades:['Trade History','MARKET ACTIVITY'],
-  withdraw:['Make Withdrawal','WITHDRAWAL'],
+  dashboard:[
+    'Dashboard',
+    'OVERVIEW'
+  ],
+
+  deposit:[
+    'Make Deposit',
+    'FUNDING'
+  ],
+
+  history:[
+    'Deposit History',
+    'ACTIVITY'
+  ],
+
+  trades:[
+    'Trade History',
+    'MARKET ACTIVITY'
+  ],
+
+  withdraw:[
+    'Make Withdrawal',
+    'WITHDRAWAL'
+  ],
+
   'withdraw-history':[
     'Withdrawal History',
     'WITHDRAWAL ACTIVITY'
   ],
-  markets:['Markets','MARKET OVERVIEW'],
-  profile:['View Profile','PERSONAL DATA'],
-  upgrade:['Account Upgrade','PLANS'],
-  password:['Change Password','SECURITY'],
-  settings:['Settings','PREFERENCES'],
+
+  markets:[
+    'Markets',
+    'MARKET OVERVIEW'
+  ],
+
+  profile:[
+    'View Profile',
+    'PERSONAL DATA'
+  ],
+
+  upgrade:[
+    'Account Upgrade',
+    'PLANS'
+  ],
+
+  password:[
+    'Change Password',
+    'SECURITY'
+  ],
+
+  settings:[
+    'Settings',
+    'PREFERENCES'
+  ],
+
   notifications:[
     'Notifications',
     'ALERT CENTER'
   ],
-  help:['Help Center','SUPPORT'],
-  logout:['Logout','SESSION']
+
+  help:[
+    'Help Center',
+    'SUPPORT'
+  ],
+
+  logout:[
+    'Logout',
+    'SESSION'
+  ]
 };
 
 
+/* =========================================================
+   NAV
+   ========================================================= */
+
 function nav(){
 
-  const n=$('#nav');
+  const n=
+    $('#nav');
+
 
   if(!n)return;
+
 
   n.innerHTML=
     navItems
@@ -1685,12 +2475,19 @@ function nav(){
             <span class="nav-icon">
               ${i}
             </span>
-            <span>${t}</span>
+
+            <span>
+              ${t}
+            </span>
           </a>`
       )
       .join('');
 }
 
+
+/* =========================================================
+   SHELL
+   ========================================================= */
 
 function shell(
   title,
@@ -1714,6 +2511,7 @@ function shell(
 
       </div>
 
+
       <div class="page-title-actions">
 
         <a
@@ -1735,6 +2533,10 @@ function shell(
   `;
 }
 
+
+/* =========================================================
+   CARD
+   ========================================================= */
 
 function card(
   t,
@@ -1769,6 +2571,10 @@ function card(
 }
 
 
+/* =========================================================
+   INPUT
+   ========================================================= */
+
 function input(
   l,
   t='text',
@@ -1778,6 +2584,7 @@ function input(
 
   return `
     <label class="form-label">
+
       ${l}
 
       <input
@@ -1799,6 +2606,7 @@ function valueInput(
 
   return `
     <label class="form-label">
+
       ${l}
 
       <input
@@ -1810,6 +2618,10 @@ function valueInput(
   `;
 }
 
+
+/* =========================================================
+   SERVER NOTICE
+   ========================================================= */
 
 function liveNotice(){
 
@@ -1842,6 +2654,7 @@ async function dashboard(){
 
   let o;
 
+
   try{
 
     o=
@@ -1854,6 +2667,7 @@ async function dashboard(){
     return shell(
       'Dashboard',
       'ACCOUNT',
+
       `
         <div class="notice">
 
@@ -1874,11 +2688,16 @@ async function dashboard(){
 
 
   shell(
-    `Welcome back, ${esc(o.user.name)}`,
+    `Welcome back, ${esc(
+      o.user?.name||
+      'Account'
+    )}`,
+
     'PERSONAL DASHBOARD',
 
     `
       ${liveNotice()}
+
 
       <section
         class="hero hero-4d"
@@ -1943,7 +2762,9 @@ async function dashboard(){
           </div>
 
           <div class="value">
-            ${money(w.balance_kobo)}
+            ${money(
+              w.balance_kobo
+            )}
           </div>
 
           <div class="sub">
@@ -1960,7 +2781,9 @@ async function dashboard(){
           </div>
 
           <div class="value">
-            ${money(w.locked_kobo)}
+            ${money(
+              w.locked_kobo
+            )}
           </div>
 
           <div class="sub">
@@ -2026,61 +2849,64 @@ async function dashboard(){
           `
             <div class="activity-list">
 
-              ${(o.transactions||[])
-                .map(
-                  x=>`
+              ${
+                (o.transactions||[])
+                  .map(
+                    x=>`
 
-                    <div class="activity-row">
+                      <div class="activity-row">
 
-                      <div class="activity-icon">
-                        ${
-                          x.type==='deposit'
-                            ?'↗'
-                            :'↙'
-                        }
-                      </div>
+                        <div class="activity-icon">
+                          ${
+                            x.type==='deposit'
+                              ?'↗'
+                              :'↙'
+                          }
+                        </div>
 
-                      <div class="activity-main">
+                        <div class="activity-main">
 
-                        <b>
-                          ${esc(
-                            x.description||
-                            x.type
+                          <b>
+                            ${esc(
+                              x.description||
+                              x.type
+                            )}
+                          </b>
+
+                          <small>
+                            ${esc(
+                              x.provider_reference||
+                              ''
+                            )}
+                            ·
+                            ${esc(
+                              x.created_at
+                            )}
+                          </small>
+
+                        </div>
+
+                        <div
+                          class="activity-amt ${
+                            x.type==='deposit'
+                              ?'positive'
+                              :'negative'
+                          }"
+                        >
+                          ${
+                            x.type==='deposit'
+                              ?'+'
+                              :'-'
+                          }${money(
+                            x.amount_kobo
                           )}
-                        </b>
-
-                        <small>
-                          ${esc(
-                            x.provider_reference||
-                            ''
-                          )}
-                          ·
-                          ${esc(
-                            x.created_at
-                          )}
-                        </small>
+                        </div>
 
                       </div>
-
-                      <div
-                        class="activity-amt ${
-                          x.type==='deposit'
-                            ?'positive'
-                            :'negative'
-                        }"
-                      >
-                        ${
-                          x.type==='deposit'
-                            ?'+'
-                            :'-'
-                        }${money(x.amount_kobo)}
-                      </div>
-
-                    </div>
-                  `
-                )
-                .join('')||
-                '<p class="muted">No transactions yet.</p>'
+                    `
+                  )
+                  .join('')||
+                  '<p class="muted">No transactions yet.</p>'
               }
 
             </div>
@@ -2094,6 +2920,7 @@ async function dashboard(){
 
           `
             <div class="verify-row">
+
               <span>
                 Personal profile
               </span>
@@ -2106,6 +2933,7 @@ async function dashboard(){
                     :'Incomplete'
                 }
               </b>
+
             </div>
 
 
@@ -2159,6 +2987,7 @@ async function dashboard(){
 
     const m=
       $('#dashboardLiveTradesMount');
+
 
     if(m){
 
@@ -2291,6 +3120,7 @@ async function deposit(){
             'input[type=number]'
           ).value;
 
+
       try{
 
         const r=
@@ -2298,12 +3128,15 @@ async function deposit(){
             '/api/transactions/deposit',
             {
               method:'POST',
-              body:JSON.stringify({
-                amount,
-                currency:'NGN'
-              })
+
+              body:
+                JSON.stringify({
+                  amount,
+                  currency:'NGN'
+                })
             }
           );
+
 
         if(r.local){
 
@@ -2322,6 +3155,7 @@ async function deposit(){
           return;
         }
 
+
         $('#depositResult')
           .innerHTML=`
             Payment reference:
@@ -2332,13 +3166,20 @@ async function deposit(){
             </b>
           `;
 
-        location.href=
-          r.authorization_url;
+
+        if(
+          r.authorization_url
+        ){
+
+          location.href=
+            r.authorization_url;
+        }
 
       }catch(e){
 
         $('#depositResult')
-          .textContent=e.message;
+          .textContent=
+            e.message;
       }
     };
 
@@ -2347,6 +3188,7 @@ async function deposit(){
     new URLSearchParams(
       location.search
     ).get('reference');
+
 
   if(ref){
 
@@ -2358,6 +3200,7 @@ async function deposit(){
           encodeURIComponent(ref)
         );
 
+
       $('#depositResult')
         .textContent=
           r.status==='success'
@@ -2367,7 +3210,8 @@ async function deposit(){
     }catch(e){
 
       $('#depositResult')
-        .textContent=e.message;
+        .textContent=
+          e.message;
     }
   }
 }
@@ -2386,6 +3230,7 @@ async function historyPage(){
         '/api/transactions/history'
       );
 
+
     shell(
       'Deposit History',
       'ACTIVITY',
@@ -2403,18 +3248,20 @@ async function historyPage(){
               <table>
 
                 <thead>
+
                   <tr>
                     <th>Date</th>
                     <th>Reference</th>
                     <th>Amount</th>
                     <th>Status</th>
                   </tr>
+
                 </thead>
 
                 <tbody>
 
                   ${
-                    r.deposits
+                    (r.deposits||[])
                       .map(
                         x=>`
 
@@ -2439,22 +3286,29 @@ async function historyPage(){
                             </td>
 
                             <td>
-                              <span class="status-chip">
+
+                              <span
+                                class="status-chip"
+                              >
                                 ${esc(
                                   x.status
                                 )}
                               </span>
+
                             </td>
 
                           </tr>
                         `
                       )
                       .join('')||
+
                       `
                         <tr>
+
                           <td colspan="4">
                             No deposits yet.
                           </td>
+
                         </tr>
                       `
                   }
@@ -2517,6 +3371,7 @@ function trades(){
     `
   );
 
+
   loadLiveTrades();
 }
 
@@ -2530,6 +3385,7 @@ async function withdraw(){
   let profile;
   let bens;
 
+
   try{
 
     profile=
@@ -2538,6 +3394,7 @@ async function withdraw(){
           '/api/account/profile'
         )
       ).profile;
+
 
     bens=
       (
@@ -2598,6 +3455,7 @@ async function withdraw(){
                   ${
                     bens.map(
                       b=>`
+
                         <option
                           value="${esc(b.id)}"
                         >
@@ -2616,6 +3474,7 @@ async function withdraw(){
                         </option>
                       `
                     ).join('')||
+
                     `
                       <option value="">
                         No beneficiary yet
@@ -2629,12 +3488,14 @@ async function withdraw(){
 
             </div>
 
+
             <button
               class="btn primary"
               id="requestWithdrawal"
             >
               Submit withdrawal request
             </button>
+
 
             <div
               id="withdrawResult"
@@ -2671,12 +3532,14 @@ async function withdraw(){
 
             </div>
 
+
             <button
               class="btn secondary"
               id="addBeneficiary"
             >
               Verify and save bank account
             </button>
+
 
             <p class="muted">
               The server resolves the account
@@ -2706,6 +3569,7 @@ async function withdraw(){
 
             </div>
 
+
             <div class="verify-row">
 
               <span>
@@ -2720,6 +3584,7 @@ async function withdraw(){
               </b>
 
             </div>
+
 
             <div class="notice compact">
 
@@ -2744,15 +3609,17 @@ async function withdraw(){
   $('#addBeneficiary').onclick=
     async()=>{
 
+      const cardEl=
+        $('#addBeneficiary')
+          .closest('.card');
+
+
       const ins=[
-        ...document
-          .querySelectorAll(
-            '#addBeneficiary'
-          )
-          .item(0)
-          .closest('.card')
-          .querySelectorAll('input')
+        ...cardEl.querySelectorAll(
+          'input'
+        )
       ];
+
 
       try{
 
@@ -2761,13 +3628,21 @@ async function withdraw(){
             '/api/account/beneficiary',
             {
               method:'POST',
-              body:JSON.stringify({
-                bankCode:ins[0].value,
-                accountNumber:ins[1].value,
-                bankName:ins[2].value
-              })
+
+              body:
+                JSON.stringify({
+                  bankCode:
+                    ins[0]?.value||'',
+
+                  accountNumber:
+                    ins[1]?.value||'',
+
+                  bankName:
+                    ins[2]?.value||''
+                })
             }
           );
+
 
         toast(
           `Verified account: ${
@@ -2775,11 +3650,14 @@ async function withdraw(){
           }`
         );
 
+
         location.reload();
 
       }catch(e){
 
-        toast(e.message);
+        toast(
+          e.message
+        );
       }
     };
 
@@ -2792,8 +3670,10 @@ async function withdraw(){
           'input[type=number]'
         ).value;
 
+
       const beneficiaryId=
         $('#beneficiary').value;
+
 
       try{
 
@@ -2802,12 +3682,15 @@ async function withdraw(){
             '/api/transactions/withdraw',
             {
               method:'POST',
-              body:JSON.stringify({
-                amount,
-                beneficiaryId
-              })
+
+              body:
+                JSON.stringify({
+                  amount,
+                  beneficiaryId
+                })
             }
           );
+
 
         $('#withdrawResult')
           .textContent=
@@ -2818,7 +3701,8 @@ async function withdraw(){
       }catch(e){
 
         $('#withdrawResult')
-          .textContent=e.message;
+          .textContent=
+            e.message;
       }
     };
 }
@@ -2836,6 +3720,7 @@ async function withdrawHistory(){
       await api(
         '/api/transactions/history'
       );
+
 
     shell(
       'Withdrawal History',
@@ -2865,10 +3750,11 @@ async function withdrawHistory(){
 
                 </thead>
 
+
                 <tbody>
 
                   ${
-                    r.withdrawals
+                    (r.withdrawals||[])
                       .map(
                         x=>`
 
@@ -2903,22 +3789,29 @@ async function withdrawHistory(){
                             </td>
 
                             <td>
-                              <span class="status-chip">
+
+                              <span
+                                class="status-chip"
+                              >
                                 ${esc(
                                   x.status
                                 )}
                               </span>
+
                             </td>
 
                           </tr>
                         `
                       )
                       .join('')||
+
                       `
                         <tr>
+
                           <td colspan="5">
                             No withdrawal requests.
                           </td>
+
                         </tr>
                       `
                   }
@@ -2990,6 +3883,7 @@ function marketsPage(){
     `
   );
 
+
   loadLiveTrades();
 }
 
@@ -3001,6 +3895,7 @@ function marketsPage(){
 async function profile(){
 
   let r;
+
 
   try{
 
@@ -3218,6 +4113,7 @@ async function profile(){
 
             </div>
 
+
             <div class="verify-row">
 
               <span>
@@ -3232,6 +4128,7 @@ async function profile(){
               </b>
 
             </div>
+
 
             <p class="muted">
               Verification decisions are
@@ -3293,6 +4190,7 @@ async function profile(){
                     `
                   )
                   .join('')||
+
                   `
                     <p class="muted">
                       No saved bank account.
@@ -3325,6 +4223,7 @@ async function profile(){
               </b>
 
             </div>
+
 
             <a
               class="btn secondary"
@@ -3364,11 +4263,13 @@ async function profile(){
         'source_of_funds'
       ];
 
+
       const all=[
         ...document.querySelectorAll(
           '.content .form-label input'
         )
       ];
+
 
       const body=
         Object.fromEntries(
@@ -3380,25 +4281,32 @@ async function profile(){
           )
         );
 
+
       try{
 
         await api(
           '/api/account/profile',
           {
             method:'PUT',
-            body:JSON.stringify(body)
+
+            body:
+              JSON.stringify(body)
           }
         );
+
 
         toast(
           'Personal data saved.'
         );
 
+
         location.reload();
 
       }catch(e){
 
-        toast(e.message);
+        toast(
+          e.message
+        );
       }
     };
 }
@@ -3412,6 +4320,7 @@ async function upgrade(){
 
   const s=
     authSession()||{};
+
 
   shell(
     'Account Upgrade',
@@ -3429,17 +4338,20 @@ async function upgrade(){
               'Current',
               'Core account operations'
             ],
+
             [
               'Premium',
               '₦15,000',
               'Expanded account controls'
             ],
+
             [
               'VIP',
               '₦50,000',
               'Advanced account services'
             ]
           ]
+
           .map(
             (p,i)=>
               card(
@@ -3471,6 +4383,7 @@ async function upgrade(){
 
                   </ul>
 
+
                   <button
                     class="btn ${
                       i
@@ -3488,6 +4401,7 @@ async function upgrade(){
                     }
                   </button>
                 `,
+
                 'plan-card'
               )
           )
@@ -3495,6 +4409,7 @@ async function upgrade(){
         }
 
       </section>
+
 
       <div
         id="upgradeResult"
@@ -3505,52 +4420,70 @@ async function upgrade(){
 
 
   document
-    .querySelectorAll('[data-plan]')
-    .forEach(b=>{
+    .querySelectorAll(
+      '[data-plan]'
+    )
+    .forEach(
+      b=>{
 
-      b.onclick=async()=>{
+        b.onclick=
+          async()=>{
 
-        const plan=
-          b.dataset.plan;
+            const plan=
+              b.dataset.plan;
 
-        if(
-          plan==='Basic'||
-          plan===s.plan
-        ){
-          return toast(
-            'No upgrade is required.'
-          );
-        }
 
-        try{
+            if(
+              plan==='Basic'||
+              plan===s.plan
+            ){
 
-          const r=
-            await api(
-              '/api/transactions/upgrade',
-              {
-                method:'POST',
-                body:JSON.stringify({
-                  plan
-                })
+              return toast(
+                'No upgrade is required.'
+              );
+            }
+
+
+            try{
+
+              const r=
+                await api(
+                  '/api/transactions/upgrade',
+                  {
+                    method:'POST',
+
+                    body:
+                      JSON.stringify({
+                        plan
+                      })
+                  }
+                );
+
+
+              if(
+                r.authorization_url
+              ){
+
+                location.href=
+                  r.authorization_url;
               }
-            );
 
-          location.href=
-            r.authorization_url;
+            }catch(e){
 
-        }catch(e){
-
-          $('#upgradeResult')
-            .textContent=e.message;
-        }
-      };
-    });
+              $('#upgradeResult')
+                .textContent=
+                  e.message;
+            }
+          };
+      }
+    );
 
 
   const ref=
     new URLSearchParams(
       location.search
     ).get('reference');
+
 
   if(ref){
 
@@ -3562,18 +4495,21 @@ async function upgrade(){
           encodeURIComponent(ref)
         );
 
+
       $('#upgradeResult')
         .textContent=
           r.status==='success'
             ?'Upgrade payment confirmed. Refreshing account…'
             :`Payment status: ${r.status}`;
 
+
       if(
         r.status==='success'
       ){
 
         setTimeout(
-          ()=>location.href='index.html',
+          ()=>location.href=
+            'index.html',
           900
         );
       }
@@ -3581,7 +4517,8 @@ async function upgrade(){
     }catch(e){
 
       $('#upgradeResult')
-        .textContent=e.message;
+        .textContent=
+          e.message;
     }
   }
 }
@@ -3627,6 +4564,7 @@ function password(){
 
           </div>
 
+
           <button
             class="btn primary"
             id="savePassword"
@@ -3643,19 +4581,21 @@ function password(){
     async()=>{
 
       const x=[
-        ...document
-          .querySelectorAll(
-            '.form-label input'
-          )
+        ...document.querySelectorAll(
+          '.form-label input'
+        )
       ].map(
         i=>i.value
       );
 
+
       if(x[1]!==x[2]){
+
         return toast(
           'Passwords do not match.'
         );
       }
+
 
       try{
 
@@ -3663,12 +4603,15 @@ function password(){
           '/api/auth/password',
           {
             method:'POST',
-            body:JSON.stringify({
-              currentPassword:x[0],
-              newPassword:x[1]
-            })
+
+            body:
+              JSON.stringify({
+                currentPassword:x[0],
+                newPassword:x[1]
+              })
           }
         );
+
 
         toast(
           'Password updated.'
@@ -3676,7 +4619,9 @@ function password(){
 
       }catch(e){
 
-        toast(e.message);
+        toast(
+          e.message
+        );
       }
     };
 }
@@ -3741,9 +4686,16 @@ function settings(){
 
           </div>
 
+
           <button
             class="btn primary"
-            onclick="localStorage.setItem('aurevia_motion','saved');location.reload()"
+            onclick="
+              localStorage.setItem(
+                'aurevia_motion',
+                'saved'
+              );
+              location.reload()
+            "
           >
             Save preferences
           </button>
@@ -3782,6 +4734,7 @@ async function notifications(){
         '/api/notifications'
       );
 
+
     shell(
       'Notifications',
       'ALERT CENTER',
@@ -3803,11 +4756,15 @@ async function notifications(){
                     >
 
                       <b>
-                        ${esc(n.title)}
+                        ${esc(
+                          n.title
+                        )}
                       </b>
 
                       <p>
-                        ${esc(n.body)}
+                        ${esc(
+                          n.body
+                        )}
                       </p>
 
                       <small>
@@ -3820,6 +4777,7 @@ async function notifications(){
                   `
                 )
                 .join('')||
+
                 `
                   <p class="muted">
                     No notifications.
@@ -3915,8 +4873,7 @@ function help(){
             <p class="muted">
               Account and profile records are
               stored in the Aurevia D1 database
-              attached to the Cloudflare Pages
-              Functions.
+              attached to the Cloudflare Worker.
             </p>
 
           </details>
@@ -3965,8 +4922,9 @@ async function logout(){
   try{
 
     /*
-     * This request includes the HttpOnly
-     * Worker session cookie.
+     * Sends the HttpOnly Worker cookie.
+     *
+     * The Worker revokes the server session.
      */
     await api(
       '/api/auth/logout',
@@ -3977,12 +4935,34 @@ async function logout(){
 
   }catch{}
 
+
+  /*
+   * Remove only the local UI copy.
+   *
+   * The actual secure cookie is handled
+   * by the Worker.
+   */
   clearSession();
+
 
   sessionStorage.removeItem(
     BOOT_KEY
   );
 
+
+  sessionStorage.removeItem(
+    SECTION_READY_KEY
+  );
+
+
+  sessionStorage.removeItem(
+    SECTION_BUSY_KEY
+  );
+
+
+  /*
+   * Return to the login/startup experience.
+   */
   location.replace(
     'index.html?loggedout=1'
   );
@@ -3995,6 +4975,7 @@ async function logout(){
 
 const appContent=
   $('.content');
+
 
 nav();
 
@@ -4012,7 +4993,9 @@ document.addEventListener(
         '[data-page]'
       );
 
+
     if(!t)return;
+
 
     const p=
       t.dataset.page;
@@ -4022,7 +5005,9 @@ document.addEventListener(
 
       e.preventDefault();
 
-      logout();
+
+      await logout();
+
 
       return;
     }
@@ -4030,12 +5015,11 @@ document.addEventListener(
 
     /*
      * Normal anchor navigation is preserved.
-     * This prevents double navigation.
      */
-
     if(
       t.tagName.toLowerCase()==='a'
     ){
+
       return;
     }
 
@@ -4048,6 +5032,7 @@ document.addEventListener(
         SECTION_BUSY_KEY
       )==='1'
     ){
+
       return;
     }
 
@@ -4073,18 +5058,24 @@ document.addEventListener(
       );
 
 
-    await sleep(2000);
+    await sleep(
+      2000
+    );
+
 
     hide();
+
 
     sessionStorage.setItem(
       SECTION_READY_KEY,
       '1'
     );
 
+
     sessionStorage.removeItem(
       SECTION_BUSY_KEY
     );
+
 
     location.href=
       target;
@@ -4100,10 +5091,14 @@ $('#menuBtn')?.addEventListener(
   'click',
   ()=>{
     $('#sidebar')
-      .classList.add('open');
+      ?.classList.add(
+        'open'
+      );
 
     $('#scrim')
-      .classList.add('show');
+      ?.classList.add(
+        'show'
+      );
   }
 );
 
@@ -4112,17 +5107,24 @@ $('#scrim')?.addEventListener(
   'click',
   ()=>{
     $('#sidebar')
-      .classList.remove('open');
+      ?.classList.remove(
+        'open'
+      );
 
     $('#scrim')
-      .classList.remove('show');
+      ?.classList.remove(
+        'show'
+      );
   }
 );
 
 
 $('#profileBtn')?.addEventListener(
   'click',
-  ()=>location.href='profile.html'
+  ()=>{
+    location.href=
+      'profile.html';
+  }
 );
 
 
@@ -4132,16 +5134,26 @@ $('#profileBtn')?.addEventListener(
 
 function toast(msg){
 
-  const t=$('#toast');
+  const t=
+    $('#toast');
+
 
   if(!t)return;
 
-  t.textContent=msg;
 
-  t.classList.add('show');
+  t.textContent=
+    msg;
+
+
+  t.classList.add(
+    'show'
+  );
+
 
   setTimeout(
-    ()=>t.classList.remove('show'),
+    ()=>t.classList.remove(
+      'show'
+    ),
     2800
   );
 }
@@ -4169,10 +5181,12 @@ function clock(){
   }
 }
 
+
 setInterval(
   clock,
   1000
 );
+
 
 clock();
 
@@ -4207,13 +5221,16 @@ function saveScrollPosition(){
   const k=
     location.pathname;
 
+
   const all=
     scrollPositions();
+
 
   all[k]=
     window.scrollY||
     document.documentElement.scrollTop||
     0;
+
 
   sessionStorage.setItem(
     SCROLL_KEY,
@@ -4232,15 +5249,22 @@ window.addEventListener(
    PAGE RENDER
    ========================================================= */
 
-async function render(page){
+async function render(
+  page
+){
 
   const p=
     pages[page]
       ?page
       :'dashboard';
 
-  $('#pageTitle').textContent=
-    pages[p][0];
+
+  if($('#pageTitle')){
+
+    $('#pageTitle').textContent=
+      pages[p][0];
+  }
+
 
   document
     .querySelectorAll(
@@ -4274,6 +5298,11 @@ async function render(page){
   }[p];
 
 
+  if(typeof f!=='function'){
+    return;
+  }
+
+
   await withSectionTransition(
     p==='dashboard'
       ?'Dashboard'
@@ -4286,6 +5315,7 @@ async function render(page){
     scrollPositions()[
       location.pathname
     ];
+
 
   if(
     Number.isFinite(y)
@@ -4308,13 +5338,23 @@ async function render(page){
 
 async function start(){
 
+  /*
+   * Startup animation.
+   */
   await bootLoader();
 
+
+  /*
+   * Authentication is checked against the
+   * real Worker session.
+   */
   if(
     !(await requireAuth())
   ){
+
     return;
   }
+
 
   const path=
     location.pathname
@@ -4324,6 +5364,7 @@ async function start(){
         '.html',
         ''
       );
+
 
   await render(
     path==='index'||
